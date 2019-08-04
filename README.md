@@ -5,14 +5,15 @@ A minecraft modpack downloader for use on headless servers
 # example
 
 ```bash
-nix build -f default.nix atl.JourneytotheCore_192
+nix build '(import ./.).atl "Journey to the Core" "1.9.2"'
+nix build '(import ./.).curse 290913'
 ```
 
 # advanced example
 
 ```bash
-pack=$(nix-build default.nix -A atl.JourneytotheCore_192 --no-out-link)
-out=$PWD/server
+out=$PWD/server-jttc
+pack=$(nix path-info '(import ./.).atl "Journey to the Core" "1.9.2"')
 
 mkdir -p $out
 cd $out

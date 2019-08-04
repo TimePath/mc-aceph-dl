@@ -5,7 +5,8 @@ with { T = pkgs.callPackage ./types.nix {}; };
 let
 
 result = {
-    atl = atl.all;
+    atl = atl;
+    curse = curse;
 };
 
 minecraft = rec {
@@ -18,17 +19,18 @@ minecraft = rec {
 };
 
 atl = rec {
+    __functor = self: fetchPack;
+
     DOWNLOAD_SERVER = "https://download.nodecdn.net/containers/atl";
-    index = parse (types.listOf T.Pack) (fetchImpure "${DOWNLOAD_SERVER}/launcher/json/packsnew.json");
+    indexManifest = parse (types.listOf T.Pack) (fetchImpure "${DOWNLOAD_SERVER}/launcher/json/packsnew.json");
     safe = replaceAll "[^A-Za-z0-9]" "";
     ref = packName: version: "${safe packName}_${safe version}";
-    __functor = self: packName: version: all."${ref packName version}";
-    all = let
+    index = let
         f = pack: it: { name = ref pack.name it.version; value = (fetchPack pack.name it.version).out; };
         l = (builtins.concatMap (pack: let
             versions = builtins.map (f pack) pack.versions;
             result = versions;
-        in result) index);
+        in result) indexManifest);
     in builtins.listToAttrs l;
     fetchPack = packName: version:
     if (lib.strings.hasInfix "\\u" packName) then builtins.trace "Skipping (unsupported unicode name): ${packName}" { manifest."$error" = packName; out = null; }
@@ -139,6 +141,51 @@ atl = rec {
         cp $LaunchServer_shPath LaunchServer.sh
         chmod +x LaunchServer.sh
     '';
+};
+
+curse = rec {
+    __functor = self: projectID: _fetchPack projectID;
+
+    CURSE_API_URL = "https://addons-ecs.forgesvc.net/api/v2";
+    _fetchAddonFile = projectID: fileID: let
+        manifest = parse (types.unspecified) (fetchImpure "${CURSE_API_URL}/addon/${toString projectID}/file/${toString fileID}");
+        in {
+            manifest = manifest;
+            out = fetchImpure manifest.downloadUrl;
+        };
+    _fetchPack = projectID: let
+        packManifest = parse (types.unspecified) (fetchImpure "${CURSE_API_URL}/addon/${toString projectID}");
+        fileID = toString packManifest.defaultFileId;
+        file = _fetchAddonFile projectID fileID;
+        zip = builtins.trace "Fetching (${file.manifest.downloadUrl}): ${packManifest.name}" file.out;
+        config = pkgs.runCommand packManifest.slug {
+            preferLocalBuild = true;
+            allowSubstitutes = false;
+            buildInputs = with pkgs; [ unzip ];
+        } ''
+            mkdir -p $out
+            cd $out
+            unzip ${zip}
+        '';
+        manifest = parse (types.unspecified) "${config}/manifest.json";
+        in {
+            manifest = manifest;
+            out = pkgs.runCommand packManifest.slug {
+                preferLocalBuild = true;
+                allowSubstitutes = false;
+            } ''
+                mkdir $out && cd $out
+
+                cp -r "${config}/overrides/." .
+
+                mkdir -p mods
+                ${forEach manifest.files (it: let
+                    jar = _fetchAddonFile it.projectID it.fileID;
+                in ''
+                    cp "${jar.out}" "mods/${jar.manifest.fileName}"
+                '')}
+            '';
+        };
 };
 
 in result)

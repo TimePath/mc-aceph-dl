@@ -42,7 +42,7 @@ in rec {
         json = builtins.toJSON data;
     } "cat $jsonPath | ${pkgs.jq}/bin/jq > $out";
 
-    fetchImpure = url: builtins.fetchurl url;
+    fetchImpure = url: builtins.fetchurl { name = replaceAll "[^A-Za-z0-9_]" "" (baseNameOf url); url = url; };
 
     fetchPure = { url, md5 ? null, sha1 ? null }: let
         result = if (availableHashes == [])
@@ -62,7 +62,7 @@ in rec {
             inherit outputHashAlgo outputHash;
             outputHashMode = "flat";
 
-            name = (replaceAll "[^A-Za-z0-9]" "") (baseNameOf url);
+            name = replaceAll "[^A-Za-z0-9]" "" (baseNameOf url);
 
             inherit url;
             executable = false;
